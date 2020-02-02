@@ -1,0 +1,41 @@
+#### general settings
+name: 
+use_tb_logger: true
+num_spks: 2
+#### datasets
+cmvn_file: /home/likai/data1/DPCL/cmvn.ark
+gpu: true
+audio_setting:
+  window: hann
+  nfft: 256
+  window_length: 256
+  hop_length: 64
+  center: true
+  is_mag: false  # abs(tf-domain)
+  is_log: false   # log(tf-domain)
+    
+
+#### network structures
+DPCL:
+  num_layer: 2
+  nfft: 129  # nfft/2+1
+  hidden_cells: 600
+  emb_D: 40
+  dropout: 0
+  bidirectional: true
+  activation: Tanh
+
+
+#### Resume training settings
+resume:
+  state: false
+  path: /home/likai/Desktop/DPCL/checkpoint
+
+
+#### logger
+logger:
+  name: DPCL
+  path: /home/likai/Desktop/DPCL/checkpoint
+  screen: true
+  tofile: false
+  print_freq: 100

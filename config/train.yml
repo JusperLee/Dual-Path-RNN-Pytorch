@@ -1,0 +1,67 @@
+#### general settings
+name: 
+use_tb_logger: true
+num_spks: 2
+#### datasets
+datasets:
+  train:
+    dataroot_mix: /home/likai/Desktop/create_scp/tr_mix.scp
+    dataroot_targets: [/home/likai/Desktop/create_scp/tr_s1.scp,/home/likai/Desktop/create_scp/tr_s2.scp]
+
+  val:
+    dataroot_mix: /home/likai/Desktop/create_scp/cv_mix.scp
+    dataroot_targets: [/home/likai/Desktop/create_scp/cv_s1.scp,/home/likai/Desktop/create_scp/cv_s2.scp]
+  
+  dataloader_setting:
+    shuffle: true
+    num_workers: 16  # per GPU
+    batch_size: 40
+    cmvn_file: /home/likai/Desktop/DPCL/cmvn.ark
+  
+  audio_setting:
+    window: hann
+    nfft: 256
+    window_length: 256
+    hop_length: 64
+    center: False
+    is_mag: True  # abs(tf-domain)
+    is_log: True   # log(tf-domain)
+    
+
+#### network structures
+DPCL:
+  num_layer: 4
+  nfft: 129  # nfft/2+1
+  hidden_cells: 300
+  emb_D: 40
+  dropout: 0.5
+  bidirectional: true
+  activation: Tanh
+
+#### training settings: learning rate scheme, loss
+train:
+  epoch: 100
+  early_stop: 10
+  path: /home/likai/Desktop/DPCL/checkpoint
+  is_gpu: true
+
+#### Optimizer settings
+optim:
+  name: RMSprop   ### Adam, RMSprop, SGD
+  lr: 1.0e-5
+  momentum: 0.9
+  weight_decay: 0
+  clip_norm: 200
+#### Resume training settings
+resume:
+  state: false
+  path: /home/likai/Desktop/DPCL/checkpoint
+
+
+#### logger
+logger:
+  name: DPCL
+  path: /home/likai/Desktop/DPCL/checkpoint
+  screen: true
+  tofile: false
+  print_freq: 100
