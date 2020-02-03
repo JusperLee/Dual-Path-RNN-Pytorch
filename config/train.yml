@@ -1,67 +1,73 @@
 #### general settings
-name: 
+name: Conv_Tasnet
 use_tb_logger: true
 num_spks: 2
 #### datasets
 datasets:
   train:
-    dataroot_mix: /home/likai/Desktop/create_scp/tr_mix.scp
-    dataroot_targets: [/home/likai/Desktop/create_scp/tr_s1.scp,/home/likai/Desktop/create_scp/tr_s2.scp]
+    dataroot_mix: /home/likai/data1/create_scp/tr_mix.scp
+    dataroot_targets: [/home/likai/data1/create_scp/tr_s1.scp,/home/likai/data1/create_scp/tr_s2.scp]
 
   val:
-    dataroot_mix: /home/likai/Desktop/create_scp/cv_mix.scp
-    dataroot_targets: [/home/likai/Desktop/create_scp/cv_s1.scp,/home/likai/Desktop/create_scp/cv_s2.scp]
+    dataroot_mix: /home/likai/data1/create_scp/cv_mix.scp
+    dataroot_targets: [/home/likai/data1/create_scp/cv_s1.scp,/home/likai/data1/create_scp/cv_s2.scp]
   
   dataloader_setting:
     shuffle: true
-    num_workers: 16  # per GPU
+    num_workers: 10  # per GPU
     batch_size: 40
-    cmvn_file: /home/likai/Desktop/DPCL/cmvn.ark
   
   audio_setting:
-    window: hann
-    nfft: 256
-    window_length: 256
-    hop_length: 64
-    center: False
-    is_mag: True  # abs(tf-domain)
-    is_log: True   # log(tf-domain)
+    sample_rate: 8000
+    chunk_size: 32000
+    least_size: 16000
     
 
 #### network structures
-DPCL:
-  num_layer: 4
-  nfft: 129  # nfft/2+1
-  hidden_cells: 300
-  emb_D: 40
-  dropout: 0.5
-  bidirectional: true
-  activation: Tanh
+Conv_Tasnet:
+  N: 512
+  L: 16
+  B: 128
+  H: 512
+  P: 3
+  X: 8
+  R: 3
+  norm: gln
+  num_spks: 2
+  activate: relu
+  causal: false
 
 #### training settings: learning rate scheme, loss
 train:
   epoch: 100
   early_stop: 10
-  path: /home/likai/Desktop/DPCL/checkpoint
-  is_gpu: true
+  path: /home/likai/data1/Dual-Path-RNN/checkpoint
+  gpuid: [0,1,2,3,4,5,6,7]
 
 #### Optimizer settings
 optim:
-  name: RMSprop   ### Adam, RMSprop, SGD
-  lr: 1.0e-5
+  name: Adam   ### Adam, RMSprop, SGD
+  lr: !!float 1e-3
   momentum: 0.9
-  weight_decay: 0
+  weight_decay: !!float 1e-5
   clip_norm: 200
+
+#### scheduler settings
+scheduler:
+  min_lr: !!float 1e-8
+  patience: 2
+  factor: 0.5
+
 #### Resume training settings
 resume:
   state: false
-  path: /home/likai/Desktop/DPCL/checkpoint
+  path: /home/likai/data1/Dual-Path-RNN/checkpoint
 
 
 #### logger
 logger:
   name: DPCL
-  path: /home/likai/Desktop/DPCL/checkpoint
+  path: /home/likai/data1/Dual-Path-RNN/checkpoint
   screen: true
   tofile: false
   print_freq: 100

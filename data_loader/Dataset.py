@@ -5,7 +5,7 @@ from data_loader.AudioData import AudioReader
 import torch
 from torch.utils.data import Dataset
 
-
+import numpy as np
 
 
 class Datasets(Dataset):
@@ -17,12 +17,12 @@ class Datasets(Dataset):
        least_size (int, optional): Minimum split size (default: 16000(2 s))
     '''
 
-    def __init__(self, mix_scp=None, ref_scp=None, sr=8000, chunk_size=32000, least_size=16000):
+    def __init__(self, mix_scp=None, ref_scp=None, sample_rate=8000, chunk_size=32000, least_size=16000):
         super(Datasets, self).__init__()
         self.mix_audio = AudioReader(
-            mix_scp, sample_rate=sr, chunk_size=chunk_size, least_size=least_size).audio
+            mix_scp, sample_rate=sample_rate, chunk_size=chunk_size, least_size=least_size).audio
         self.ref_audio = [AudioReader(
-            r, sample_rate=sr, chunk_size=chunk_size, least_size=least_size).audio for r in ref_scp]
+            r, sample_rate=sample_rate, chunk_size=chunk_size, least_size=least_size).audio for r in ref_scp]
 
     def __len__(self):
         return len(self.mix_audio)
@@ -32,6 +32,8 @@ class Datasets(Dataset):
 
 
 if __name__ == "__main__":
-    dataset = Datasets("/home/likai/data1/create_scp/tr_mix.scp",
-                      ["/home/likai/data1/create_scp/tr_s1.scp", "/home/likai/data1/create_scp/tr_s2.scp"])
-    print(len(dataset))
+    dataset = Datasets("/home/likai/data1/create_scp/cv_mix.scp",
+                      ["/home/likai/data1/create_scp/cv_s1.scp", "/home/likai/data1/create_scp/cv_s2.scp"])
+    for i in dataset.mix_audio:
+        if i.shape[0] != 32000:
+            print('fail')

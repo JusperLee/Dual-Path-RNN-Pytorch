@@ -1,9 +1,11 @@
+import torch.nn.functional as F
+from utils import util
+import torch
+import torchaudio
 import sys
 sys.path.append('../')
-import torchaudio
-import torch
-from utils import util
-import torch.nn.functional as F
+
+
 def read_wav(fname, return_rate=False):
     '''
          Read wavfile using Pytorch audio
@@ -47,6 +49,7 @@ class AudioReader(object):
         Output:
             split audio (list)
     '''
+
     def __init__(self, scp_path, sample_rate=8000, chunk_size=32000, least_size=16000):
         super(AudioReader, self).__init__()
         self.sample_rate = sample_rate
@@ -56,7 +59,7 @@ class AudioReader(object):
         self.chunk_size = chunk_size
         self.least_size = least_size
         self.split()
-    
+
     def split(self):
         '''
             split audio with chunk_size and least_size
@@ -75,7 +78,6 @@ class AudioReader(object):
                         break
                     self.audio.append(utt[start:start+self.chunk_size])
                     start += self.least_size
-            
 
 
 
