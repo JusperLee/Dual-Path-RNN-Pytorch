@@ -8,6 +8,8 @@ Dual-path RNN: efficient long sequence modeling for time-domain single-channel s
 
 - [x] 2020-02-02: Complete data preprocessing, data set code. Dataset Code: [/data_loader/Dataset.py](https://github.com/JusperLee/Dual-path-RNN-Pytorch/blob/master/data_loader/Dataset.py)
 
+- [x] 2020-02-03: Complete Conv-TasNet Framework (Update /model/model.py, Trainer_Tasnet.py, Train_Tasnet.py)
+
 - [ ] 2020-02-05: Complete Training code.
 
 - [ ] 2020-02-06: Complete Train code and Test code.
