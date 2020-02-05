@@ -15,7 +15,7 @@ datasets:
   dataloader_setting:
     shuffle: true
     num_workers: 10  # per GPU
-    batch_size: 40
+    batch_size: 20
   
   audio_setting:
     sample_rate: 8000

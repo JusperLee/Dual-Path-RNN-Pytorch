@@ -34,7 +34,7 @@ class Trainer(object):
         if opt['train']['gpuid']:
             self.logger.info('Load Nvida GPU .....')
             self.device = torch.device(
-                'cuda:{}'.format(0))
+                'cuda:{}'.format(opt['train']['gpuid'][0]))
             self.gpuid = opt['train']['gpuid']
             self.convtasnet = Conv_Tasnet.to(self.device)
             self.logger.info(

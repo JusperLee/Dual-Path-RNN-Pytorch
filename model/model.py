@@ -228,7 +228,7 @@ class Separation_TasNet(nn.Module):
            Input:
                x: [B x C x T], B is batch size, T is times
            Returns:
-               x: [B, C_o, T_o]
+               x: [num_spks, B, N, T]
          """
         # B x C x T
         x = self.norm(x)
@@ -236,6 +236,7 @@ class Separation_TasNet(nn.Module):
         # B x C x T
         x = self.conv1d_list(x)
         # B x num_spks*N x T
+        x = self.PReLu(x)
         x = self.end_conv1x1(x)
         # num_spks x B x N x T
         x = torch.chunk(x, self.num_spks, dim=1)
