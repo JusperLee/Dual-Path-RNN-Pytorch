@@ -1,9 +1,11 @@
+import sys
+sys.path.append('../')
+
 import torch.nn.functional as F
 from torch import nn
 import torch
 from utils.util import check_parameters
-import sys
-sys.path.append('../')
+
 
 
 class GlobalLayerNorm(nn.Module):
@@ -153,7 +155,7 @@ class Encoder(nn.Module):
         return x
 
 
-class Decoder(nn.ConvTranspose2d):
+class Decoder(nn.ConvTranspose1d):
     '''
         Decoder of the TasNet
         This module can be seen as the gradient of Conv1d with respect to its input. 
@@ -166,14 +168,14 @@ class Decoder(nn.ConvTranspose2d):
 
     def forward(self, x):
         """
-        x: N x K x S or N x C x K x S
+        x: [B, N, L]
         """
-        if x.dim() not in [3, 4]:
+        if x.dim() not in [2, 3]:
             raise RuntimeError("{} accept 3/4D tensor as input".format(
                 self.__name__))
-        x = super().forward(x if x.dim() == 4 else torch.unsqueeze(x, 1))
+        x = super().forward(x if x.dim() == 3 else torch.unsqueeze(x, 1))
 
-        if torch.squeeze(x).dim() == 2:
+        if torch.squeeze(x).dim() == 1:
             x = torch.squeeze(x, dim=1)
         else:
             x = torch.squeeze(x)
@@ -194,14 +196,17 @@ class Dual_RNN_Block(nn.Module):
             bidirectional: If True, becomes a bidirectional LSTM. Default: False
     '''
 
-    def __init__(self, in_channels, hidden_channels, rnn_type='LSTM', norm='ln', dropout=0, bidirectional=False, num_spks=2):
+    def __init__(self, in_channels, out_channels,
+                 hidden_channels, rnn_type='LSTM', norm='ln',
+                 dropout=0, bidirectional=False, num_spks=2):
         super(Dual_RNN_Block, self).__init__()
         self.rnn = getattr(nn, rnn_type)(
-            in_channels, hidden_channels, batch_first=True, dropout=dropout, bidirectional=bidirectional)
-        self.norm = select_norm(norm, in_channels)
+            out_channels, hidden_channels, batch_first=True, dropout=dropout, bidirectional=bidirectional)
+        self.norm = select_norm(norm, out_channels)
         self.linear = nn.Linear(
-            hidden_channels*2 if bidirectional else hidden_channels, in_channels)
-        self.conv2d = nn.Conv2d(in_channels,in_channels*num_spks,kernel_size=1)
+            hidden_channels*2 if bidirectional else hidden_channels, out_channels)
+        self.conv2d = nn.Conv2d(
+            out_channels, in_channels*num_spks, kernel_size=1)
         self.prelu = nn.PReLU()
 
     def forward(self, x):
@@ -261,23 +266,49 @@ class Dual_Path_RNN(nn.Module):
                      with dropout probability equal to dropout. Default: 0
             bidirectional: If True, becomes a bidirectional LSTM. Default: False
             num_layers: number of Dual-Path-Block
+            K: the length of chunk
+            num_spks: the number of speakers
     '''
 
-    def __init__(self, in_channels, hidden_channels,
+    def __init__(self, in_channels, out_channels, hidden_channels,
                  rnn_type='LSTM', norm='ln', dropout=0,
-                 bidirectional=False, num_layers=4, K=200):
+                 bidirectional=False, num_layers=4, K=200, num_spks=2):
         super(Dual_Path_RNN, self).__init__()
         self.K = K
-        self.dual_rnn = self._Sequential(in_channels, hidden_channels,
-                                         rnn_type='LSTM', norm='ln', dropout=0,
-                                         bidirectional=False, num_layers=4)
-        
-        self.conv1d = 
+        self.num_spks = num_spks
+        self.norm = select_norm(norm, in_channels)
+        self.conv1d = nn.Conv1d(in_channels, out_channels, 1)
+        self.dual_rnn = self._Sequential(in_channels, out_channels, hidden_channels,
+                                         rnn_type=rnn_type, norm=norm, dropout=dropout,
+                                         bidirectional=bidirectional, num_layers=num_layers)
+        self.activation = nn.Sigmoid()
 
-    def _Sequential(self, in_channels, hidden_channels,
+    def forward(self, x):
+        '''
+           x: [B, N, L]
+
+        '''
+        # [B, N, L]
+        x = self.norm(x)
+        # [B, N, L]
+        x = self.conv1d(x)
+        # [B, N, K, S]
+        x, gap = self._Segmentation(x, self.K)
+        # [B, N*spks, K, S]
+        x = self.dual_rnn(x)
+        # [B, N*spks, L]
+        x = self._over_add(x, gap)
+        # [spks, B, N, L]
+        x = torch.chunk(x, self.num_spks, dim=1)
+        x = torch.stack(x, dim=0)
+        x = self.activation(x)
+
+        return x
+
+    def _Sequential(self, in_channels, out_channels, hidden_channels,
                     rnn_type='LSTM', norm='ln', dropout=0,
                     bidirectional=False, num_layers=4):
-        block_list = [Dual_RNN_Block(in_channels, hidden_channels,
+        block_list = [Dual_RNN_Block(in_channels, out_channels, hidden_channels,
                                      rnn_type='LSTM', norm='ln', dropout=0,
                                      bidirectional=False) for i in range(num_layers)]
         return nn.Sequential(*block_list)
@@ -289,7 +320,7 @@ class Dual_Path_RNN(nn.Module):
            P: hop size
            input: [B, N, L]
         '''
-        B, N, L = input.shape()
+        B, N, L = input.shape
         P = K // 2
         gap = K - (P + L % K) % K
         if gap > 0:
@@ -306,8 +337,9 @@ class Dual_Path_RNN(nn.Module):
            K: chunks of length
            P: hop size
            input: [B, N, L]
+           output: [B, N, K, S]
         '''
-        B, N, L = input.shape()
+        B, N, L = input.shape
         P = K // 2
         input, gap = self._padding(input, K)
         # [B, N, K, S]
@@ -323,8 +355,9 @@ class Dual_Path_RNN(nn.Module):
            Merge sequence
            input: [B, N, K, S]
            gap: padding length
+           output: [B, N, L]
         '''
-        B, N, K, S = input.shape()
+        B, N, K, S = input.shape
         P = K // 2
         # [B, N, S, K]
         input = input.transpose(2, 3).contiguous().view(B, N, -1, K * 2)
@@ -336,11 +369,52 @@ class Dual_Path_RNN(nn.Module):
 
         return input
 
+class Dual_RNN_model(nn.Module):
+    '''
+       model of Dual Path RNN
+       input:
+            in_channels: The number of expected features in the input x
+            out_channels: The number of features in the hidden state h
+            hidden_channels: The hidden size of RNN
+            kernel_size: Encoder and Decoder Kernel size
+            rnn_type: RNN, LSTM, GRU
+            norm: gln = "Global Norm", cln = "Cumulative Norm", ln = "Layer Norm"
+            dropout: If non-zero, introduces a Dropout layer on the outputs 
+                     of each LSTM layer except the last layer, 
+                     with dropout probability equal to dropout. Default: 0
+            bidirectional: If True, becomes a bidirectional LSTM. Default: False
+            num_layers: number of Dual-Path-Block
+            K: the length of chunk
+            num_spks: the number of speakers
+    '''
+    def __init__(self, in_channels, out_channels, hidden_channels,
+                 kernel_size=2, rnn_type='LSTM', norm='ln', dropout=0,
+                 bidirectional=False, num_layers=4, K=200, num_spks=2):
+        super(Dual_RNN_model,self).__init__()
+        self.encoder = Encoder(kernel_size=2,out_channels=in_channels)
+        self.separation = Dual_Path_RNN(in_channels, out_channels, hidden_channels,
+                 rnn_type='LSTM', norm='ln', dropout=0,
+                 bidirectional=False, num_layers=4, K=200, num_spks=2)
+        self.decoder = Decoder(in_channels=in_channels, out_channels=1, kernel_size=kernel_size, stride=kernel_size//2)
+        self.num_spks = num_spks
+    
+    def forward(self, x):
+        '''
+           x: [B, L]
+        '''
+        # [B, N, L]
+        e = self.encoder(x)
+        # [spks, B, N, L]
+        s = self.separation(e)
+        # [B, N, L] -> [B, L]
+        out = [s[i]*e for i in range(self.num_spks)]
+        audio = [self.decoder(out[i]) for i in range(self.num_spks)]
+        return audio
 
 if __name__ == "__main__":
-    rnn = Dual_RNN(25, 100)
+    rnn = Dual_RNN_model(25, 50, 100,bidirectional=True, norm='gln')
     #encoder = Encoder(16, 512)
-    x = torch.randn(10, 25, 9, 40)
+    x = torch.randn(10, 100)
     out = rnn(x)
     print("{:.3f}".format(check_parameters(rnn)))
-    print(out.shape)
+    print(out[0].shape)
