@@ -6,7 +6,9 @@ from torch import nn
 import torch
 from utils.util import check_parameters
 
+import warnings
 
+warnings.filterwarnings('ignore')
 
 class GlobalLayerNorm(nn.Module):
     '''
@@ -83,50 +85,6 @@ def select_norm(norm, dim):
     else:
         return nn.BatchNorm1d(dim)
 
-
-class Conv1D(nn.Module):
-    '''
-       Build the Conv1D structure
-       causal: if True is causal setting
-    '''
-
-    def __init__(self, in_channels=256, out_channels=512,
-                 kernel_size=3, dilation=1, norm='gln', causal=False):
-        super(Conv1D, self).__init__()
-        self.causal = causal
-        self.conv1x1 = nn.Conv1d(in_channels, out_channels, kernel_size=1)
-        self.PReLu1 = nn.PReLU()
-        self.norm1 = select_norm(norm, out_channels)
-        self.pad = (dilation*(kernel_size-1)
-                    )//2 if not causal else dilation*(kernel_size-1)
-        self.dwconv = nn.Conv1d(out_channels, out_channels, kernel_size=kernel_size,
-                                groups=out_channels, padding=self.pad, dilation=dilation)
-        self.PReLu2 = nn.PReLU()
-        self.norm2 = select_norm(norm, out_channels)
-        self.end_conv1x1 = nn.Conv1d(out_channels, in_channels, 1)
-
-    def forward(self, x):
-        """
-          Input:
-              x: [B x C x T], B is batch size, T is times
-          Returns:
-              x: [B, C, T]
-        """
-        # B x C x T -> B x C_o x T_o
-        x_conv = self.conv1x1(x)
-        x_conv = self.PReLu1(x_conv)
-        x_conv = self.norm1(x_conv)
-        # B x C_o x T_o
-        x_conv = self.dwconv(x_conv)
-        x_conv = self.PReLu2(x_conv)
-        x_conv = self.norm2(x_conv)
-        # B x C_o x T_o -> B x C x T
-        if self.causal:
-            x_conv = x_conv[:, :, :-self.pad]
-        x_conv = self.end_conv1x1(x_conv)
-        return x+x_conv
-
-
 class Encoder(nn.Module):
     '''
        Conv-Tasnet Encoder part
@@ -196,18 +154,24 @@ class Dual_RNN_Block(nn.Module):
             bidirectional: If True, becomes a bidirectional LSTM. Default: False
     '''
 
-    def __init__(self, in_channels, out_channels,
+    def __init__(self, out_channels,
                  hidden_channels, rnn_type='LSTM', norm='ln',
                  dropout=0, bidirectional=False, num_spks=2):
         super(Dual_RNN_Block, self).__init__()
-        self.rnn = getattr(nn, rnn_type)(
+        # RNN model
+        self.intra_rnn = getattr(nn, rnn_type)(
             out_channels, hidden_channels, batch_first=True, dropout=dropout, bidirectional=bidirectional)
-        self.norm = select_norm(norm, out_channels)
-        self.linear = nn.Linear(
+        self.inter_rnn = getattr(nn, rnn_type)(
+            out_channels, hidden_channels, batch_first=True, dropout=dropout, bidirectional=bidirectional)
+        # Norm
+        self.intra_norm = select_norm(norm, out_channels)
+        self.inter_norm = select_norm(norm, out_channels)
+        # Linear
+        self.intra_linear = nn.Linear(
             hidden_channels*2 if bidirectional else hidden_channels, out_channels)
-        self.conv2d = nn.Conv2d(
-            out_channels, in_channels*num_spks, kernel_size=1)
-        self.prelu = nn.PReLU()
+        self.inter_linear = nn.Linear(
+            hidden_channels*2 if bidirectional else hidden_channels, out_channels)
+        
 
     def forward(self, x):
         '''
@@ -219,12 +183,12 @@ class Dual_RNN_Block(nn.Module):
         # [BS, K, N]
         intra_rnn = x.permute(0, 3, 2, 1).contiguous().view(B*S, K, N)
         # [BS, K, H]
-        intra_rnn, _ = self.rnn(intra_rnn)
+        intra_rnn, _ = self.intra_rnn(intra_rnn)
         # [BS, K, N]
-        intra_rnn = self.linear(intra_rnn)
+        intra_rnn = self.intra_linear(intra_rnn)
         # [BS, N, K]
         intra_rnn = intra_rnn.permute(0, 2, 1).contiguous()
-        intra_rnn = self.norm(intra_rnn)
+        intra_rnn = self.intra_norm(intra_rnn)
         # [B, S, N, K]
         intra_rnn = intra_rnn.view(B, S, N, K)
         # [B, N, K, S]
@@ -235,21 +199,18 @@ class Dual_RNN_Block(nn.Module):
         # [BK, S, N]
         inter_rnn = intra_rnn.permute(0, 2, 3, 1).contiguous().view(B*K, S, N)
         # [BK, S, H]
-        inter_rnn, _ = self.rnn(inter_rnn)
+        inter_rnn, _ = self.inter_rnn(inter_rnn)
         # [BK, S, N]
-        inter_rnn = self.linear(inter_rnn)
+        inter_rnn = self.inter_linear(inter_rnn)
         # [BK, N, S]
         inter_rnn = inter_rnn.permute(0, 2, 1).contiguous()
-        inter_rnn = self.norm(inter_rnn)
+        inter_rnn = self.inter_norm(inter_rnn)
         # [B, K, N, S]
         inter_rnn = inter_rnn.view(B, K, N, S)
         # [B, N, K, S]
         inter_rnn = inter_rnn.permute(0, 2, 1, 3).contiguous()
         out = inter_rnn + intra_rnn
 
-        # [B, N*spks, K, S]
-        out = self.prelu(out)
-        out = self.conv2d(out)
         return out
 
 
@@ -276,11 +237,20 @@ class Dual_Path_RNN(nn.Module):
         super(Dual_Path_RNN, self).__init__()
         self.K = K
         self.num_spks = num_spks
+        self.num_layers = num_layers
         self.norm = select_norm(norm, in_channels)
         self.conv1d = nn.Conv1d(in_channels, out_channels, 1)
-        self.dual_rnn = self._Sequential(in_channels, out_channels, hidden_channels,
-                                         rnn_type=rnn_type, norm=norm, dropout=dropout,
-                                         bidirectional=bidirectional, num_layers=num_layers)
+
+        self.dual_rnn = nn.ModuleList([])
+        for i in range(num_layers):
+            self.dual_rnn.append(Dual_RNN_Block(out_channels, hidden_channels,
+                                     rnn_type=rnn_type, norm=norm, dropout=dropout,
+                                     bidirectional=bidirectional))
+
+        self.conv2d = nn.Conv2d(
+            out_channels, out_channels*num_spks, kernel_size=1)
+        self.end_conv1x1 = nn.Conv1d(out_channels, in_channels, 1)
+        self.prelu = nn.PReLU()
         self.activation = nn.Sigmoid()
 
     def forward(self, x):
@@ -295,20 +265,30 @@ class Dual_Path_RNN(nn.Module):
         # [B, N, K, S]
         x, gap = self._Segmentation(x, self.K)
         # [B, N*spks, K, S]
-        x = self.dual_rnn(x)
+        for i in range(self.num_layers):
+            x = self.dual_rnn[i](x)
+        x = self.prelu(x)
+        x = self.conv2d(x)
         # [B, N*spks, L]
         x = self._over_add(x, gap)
         # [spks, B, N, L]
         x = torch.chunk(x, self.num_spks, dim=1)
         x = torch.stack(x, dim=0)
+        # [spks*B, N, L]
+        spks, B, N, L = x.shape
+        x = x.view(spks*B, N, L)
+        x = self.end_conv1x1(x)
+        # [spks, B, N, L]
+        _, N, L = x.shape
+        x = x.view(spks, B, N, L)
         x = self.activation(x)
 
         return x
 
-    def _Sequential(self, in_channels, out_channels, hidden_channels,
+    def _Sequential(self, out_channels, hidden_channels,
                     rnn_type='LSTM', norm='ln', dropout=0,
                     bidirectional=False, num_layers=4):
-        block_list = [Dual_RNN_Block(in_channels, out_channels, hidden_channels,
+        block_list = [Dual_RNN_Block(out_channels, hidden_channels,
                                      rnn_type='LSTM', norm='ln', dropout=0,
                                      bidirectional=False) for i in range(num_layers)]
         return nn.Sequential(*block_list)
@@ -324,9 +304,10 @@ class Dual_Path_RNN(nn.Module):
         P = K // 2
         gap = K - (P + L % K) % K
         if gap > 0:
-            input = torch.cat((input, torch.zeros(B, N, gap)), dim=2)
+            pad = torch.Tensor(torch.zeros(B, N, gap)).type(input.type())
+            input = torch.cat((input, pad), dim=2)
 
-        pad = torch.zeros(B, N, P)
+        pad = torch.Tensor(torch.zeros(B, N, P)).type(input.type())
         input = torch.cat((pad, input, pad), dim=2)
 
         return input, gap
@@ -362,7 +343,7 @@ class Dual_Path_RNN(nn.Module):
         # [B, N, S, K]
         input = input.transpose(2, 3).contiguous().view(B, N, -1, K * 2)
 
-        input = input[:, :, :, :K].contiguous().view(B, N, -1)[:, :, P:]
+        input = input[:, :, :, :K].contiguous().view(B, N, -1)[:, :, P:]*2
         # [B, N, L]
         if gap > 0:
             input = input[:, :, :-gap]
@@ -391,10 +372,10 @@ class Dual_RNN_model(nn.Module):
                  kernel_size=2, rnn_type='LSTM', norm='ln', dropout=0,
                  bidirectional=False, num_layers=4, K=200, num_spks=2):
         super(Dual_RNN_model,self).__init__()
-        self.encoder = Encoder(kernel_size=2,out_channels=in_channels)
+        self.encoder = Encoder(kernel_size=kernel_size,out_channels=in_channels)
         self.separation = Dual_Path_RNN(in_channels, out_channels, hidden_channels,
-                 rnn_type='LSTM', norm='ln', dropout=0,
-                 bidirectional=False, num_layers=4, K=200, num_spks=2)
+                 rnn_type=rnn_type, norm=norm, dropout=dropout,
+                 bidirectional=bidirectional, num_layers=num_layers, K=K, num_spks=num_spks)
         self.decoder = Decoder(in_channels=in_channels, out_channels=1, kernel_size=kernel_size, stride=kernel_size//2)
         self.num_spks = num_spks
     
@@ -412,9 +393,10 @@ class Dual_RNN_model(nn.Module):
         return audio
 
 if __name__ == "__main__":
-    rnn = Dual_RNN_model(25, 50, 100,bidirectional=True, norm='gln')
+    rnn = Dual_RNN_model(256, 64, 128,bidirectional=True, norm='gln', num_layers=6).cuda()
     #encoder = Encoder(16, 512)
-    x = torch.randn(10, 100)
+    x = torch.randn(1, 100).cuda()
     out = rnn(x)
     print("{:.3f}".format(check_parameters(rnn)))
     print(out[0].shape)
+    print(rnn)

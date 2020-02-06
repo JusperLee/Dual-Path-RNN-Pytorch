@@ -1,0 +1,73 @@
+#### general settings
+name: Dual_Path_RNN
+use_tb_logger: true
+num_spks: 2
+#### datasets
+datasets:
+  train:
+    dataroot_mix: /home/likai/data1/create_scp/tr_mix.scp
+    dataroot_targets: [/home/likai/data1/create_scp/tr_s1.scp,/home/likai/data1/create_scp/tr_s2.scp]
+
+  val:
+    dataroot_mix: /home/likai/data1/create_scp/cv_mix.scp
+    dataroot_targets: [/home/likai/data1/create_scp/cv_s1.scp,/home/likai/data1/create_scp/cv_s2.scp]
+  
+  dataloader_setting:
+    shuffle: true
+    num_workers: 1  # per GPU
+    batch_size: 1
+  
+  audio_setting:
+    sample_rate: 8000
+    chunk_size: 32000
+    least_size: 16000
+    
+
+#### network structures
+Dual_Path_RNN:
+  in_channels: 256
+  out_channels: 64 
+  hidden_channels: 128
+  kernel_size: 2
+  rnn_type: LSTM
+  norm: gln
+  dropout: 0.5
+  bidirectional: true
+  num_layers: 6
+  K: 250
+  num_spks: 2
+
+#### training settings: learning rate scheme, loss
+train:
+  epoch: 1000
+  early_stop: 10
+  path: /home/likai/data1/Dual-Path-RNN/checkpoint
+  gpuid: [5]
+
+#### Optimizer settings
+optim:
+  name: Adam   ### Adam, RMSprop, SGD
+  lr: !!float 1e-3
+  momentum: 0.9
+  weight_decay: !!float 1e-5
+  clip_norm: 200
+
+#### scheduler settings
+scheduler:
+  min_lr: !!float 1e-8
+  patience: 2
+  factor: 0.5
+
+#### Resume training settings
+resume:
+  state: false
+  path: /home/likai/data1/Dual-Path-RNN/checkpoint
+
+
+#### logger
+logger:
+  name: DPCL
+  path: /home/likai/data1/Dual-Path-RNN/checkpoint
+  screen: true
+  tofile: false
+  print_freq: 1000
