@@ -30,8 +30,8 @@ Dual_Path_RNN:
   hidden_channels: 128
   kernel_size: 2
   rnn_type: LSTM
-  norm: gln
-  dropout: 0.5
+  norm: ln
+  dropout: 0
   bidirectional: true
   num_layers: 6
   K: 250

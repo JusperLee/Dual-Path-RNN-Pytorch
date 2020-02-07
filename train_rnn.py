@@ -36,7 +36,7 @@ def make_dataloader(opt):
     val_dataloader = Loader(val_dataset,
                             batch_size=opt['datasets']['dataloader_setting']['batch_size'],
                             num_workers=opt['datasets']['dataloader_setting']['num_workers'],
-                            shuffle=opt['datasets']['dataloader_setting']['shuffle'])
+                            shuffle=False)
     
     return train_dataloader, val_dataloader
 

@@ -21,35 +21,42 @@ class GlobalLayerNorm(nn.Module):
           initialized to ones (for weights) and zeros (for biases).
     '''
 
-    def __init__(self, dim, eps=1e-05, elementwise_affine=True):
+    def __init__(self, dim, shape, eps=1e-8, elementwise_affine=True):
         super(GlobalLayerNorm, self).__init__()
         self.dim = dim
         self.eps = eps
         self.elementwise_affine = elementwise_affine
 
         if self.elementwise_affine:
-            self.weight = nn.Parameter(torch.ones(self.dim, 1))
-            self.bias = nn.Parameter(torch.zeros(self.dim, 1))
+            if shape == 3:
+                self.weight = nn.Parameter(torch.ones(self.dim, 1))
+                self.bias = nn.Parameter(torch.zeros(self.dim, 1))
+            if shape == 4:
+                self.weight = nn.Parameter(torch.ones(self.dim, 1, 1))
+                self.bias = nn.Parameter(torch.zeros(self.dim, 1, 1))
         else:
             self.register_parameter('weight', None)
             self.register_parameter('bias', None)
 
     def forward(self, x):
-        # x = N x C x L
+        # x = N x C x K x S or N x C x L
         # N x 1 x 1
-        # cln: mean,var N x 1 x L
+        # cln: mean,var N x 1 x K x S
         # gln: mean,var N x 1 x 1
-        if x.dim() != 3:
-            raise RuntimeError("{} accept 3D tensor as input".format(
-                self.__name__))
-
-        mean = torch.mean(x, (1, 2), keepdim=True)
-        var = torch.mean((x-mean)**2, (1, 2), keepdim=True)
-        # N x C x L
-        if self.elementwise_affine:
-            x = self.weight*(x-mean)/torch.sqrt(var+self.eps)+self.bias
-        else:
-            x = (x-mean)/torch.sqrt(var+self.eps)
+        if x.dim() == 4:
+            mean = torch.mean(x, (1, 2, 3), keepdim=True)
+            var = torch.mean((x-mean)**2, (1, 2, 3), keepdim=True)
+            if self.elementwise_affine:
+                x = self.weight*(x-mean)/torch.sqrt(var+self.eps)+self.bias
+            else:
+                x = (x-mean)/torch.sqrt(var+self.eps)
+        if x.dim() == 3:
+            mean = torch.mean(x, (1, 2), keepdim=True)
+            var = torch.mean((x-mean)**2, (1, 2), keepdim=True)
+            if self.elementwise_affine:
+                x = self.weight*(x-mean)/torch.sqrt(var+self.eps)+self.bias
+            else:
+                x = (x-mean)/torch.sqrt(var+self.eps)
         return x
 
 
@@ -62,26 +69,33 @@ class CumulativeLayerNorm(nn.LayerNorm):
 
     def __init__(self, dim, elementwise_affine=True):
         super(CumulativeLayerNorm, self).__init__(
-            dim, elementwise_affine=elementwise_affine)
+            dim, elementwise_affine=elementwise_affine, eps=1e-8)
 
     def forward(self, x):
-        # x: N x C x L
-        # N x L x C
-        x = torch.transpose(x, 1, 2)
-        # N x L x C == only channel norm
-        x = super().forward(x)
-        # N x C x L
-        x = torch.transpose(x, 1, 2)
+        # x: N x C x K x S or N x C x L
+        # N x K x S x C
+        if x.dim() == 4:
+           x = x.permute(0, 2, 3, 1).contiguous()
+           # N x K x S x C == only channel norm
+           x = super().forward(x)
+           # N x C x K x S
+           x = x.permute(0, 3, 1, 2).contiguous()
+        if x.dim() == 3:
+            x = torch.transpose(x, 1, 2)
+            # N x L x C == only channel norm
+            x = super().forward(x)
+            # N x C x L
+            x = torch.transpose(x, 1, 2)
         return x
 
 
-def select_norm(norm, dim):
+def select_norm(norm, dim, shape):
     if norm == 'gln':
-        return GlobalLayerNorm(dim, elementwise_affine=True)
+        return GlobalLayerNorm(dim, shape, elementwise_affine=True)
     if norm == 'cln':
         return CumulativeLayerNorm(dim, elementwise_affine=True)
     if norm == 'ln':
-        return nn.GroupNorm(1, dim)
+        return nn.GroupNorm(1, dim, eps=1e-8)
     else:
         return nn.BatchNorm1d(dim)
 
@@ -95,7 +109,7 @@ class Encoder(nn.Module):
     def __init__(self, kernel_size=2, out_channels=64):
         super(Encoder, self).__init__()
         self.conv1d = nn.Conv1d(in_channels=1, out_channels=out_channels,
-                                kernel_size=kernel_size, stride=kernel_size//2, groups=1)
+                                kernel_size=kernel_size, stride=kernel_size//2, groups=1, bias=False)
 
     def forward(self, x):
         """
@@ -160,12 +174,12 @@ class Dual_RNN_Block(nn.Module):
         super(Dual_RNN_Block, self).__init__()
         # RNN model
         self.intra_rnn = getattr(nn, rnn_type)(
-            out_channels, hidden_channels, batch_first=True, dropout=dropout, bidirectional=bidirectional)
+            out_channels, hidden_channels, 1, batch_first=True, dropout=dropout, bidirectional=bidirectional)
         self.inter_rnn = getattr(nn, rnn_type)(
-            out_channels, hidden_channels, batch_first=True, dropout=dropout, bidirectional=bidirectional)
+            out_channels, hidden_channels, 1, batch_first=True, dropout=dropout, bidirectional=bidirectional)
         # Norm
-        self.intra_norm = select_norm(norm, out_channels)
-        self.inter_norm = select_norm(norm, out_channels)
+        self.intra_norm = select_norm(norm, out_channels, 4)
+        self.inter_norm = select_norm(norm, out_channels, 4)
         # Linear
         self.intra_linear = nn.Linear(
             hidden_channels*2 if bidirectional else hidden_channels, out_channels)
@@ -185,14 +199,14 @@ class Dual_RNN_Block(nn.Module):
         # [BS, K, H]
         intra_rnn, _ = self.intra_rnn(intra_rnn)
         # [BS, K, N]
-        intra_rnn = self.intra_linear(intra_rnn)
-        # [BS, N, K]
-        intra_rnn = intra_rnn.permute(0, 2, 1).contiguous()
-        intra_rnn = self.intra_norm(intra_rnn)
-        # [B, S, N, K]
-        intra_rnn = intra_rnn.view(B, S, N, K)
+        intra_rnn = self.intra_linear(intra_rnn.contiguous().view(B*S*K, -1)).view(B*S, K, -1)
+        # [B, S, K, N]
+        intra_rnn = intra_rnn.view(B, S, K, N)
         # [B, N, K, S]
-        intra_rnn = intra_rnn.permute(0, 2, 3, 1).contiguous()
+        intra_rnn = intra_rnn.permute(0, 3, 2, 1).contiguous()
+        intra_rnn = self.intra_norm(intra_rnn)
+        
+        # [B, N, K, S]
         intra_rnn = intra_rnn + x
 
         # inter RNN
@@ -201,14 +215,13 @@ class Dual_RNN_Block(nn.Module):
         # [BK, S, H]
         inter_rnn, _ = self.inter_rnn(inter_rnn)
         # [BK, S, N]
-        inter_rnn = self.inter_linear(inter_rnn)
-        # [BK, N, S]
-        inter_rnn = inter_rnn.permute(0, 2, 1).contiguous()
-        inter_rnn = self.inter_norm(inter_rnn)
-        # [B, K, N, S]
-        inter_rnn = inter_rnn.view(B, K, N, S)
+        inter_rnn = self.inter_linear(inter_rnn.contiguous().view(B*S*K, -1)).view(B*K, S, -1)
+        # [B, K, S, N]
+        inter_rnn = inter_rnn.view(B, K, S, N)
         # [B, N, K, S]
-        inter_rnn = inter_rnn.permute(0, 2, 1, 3).contiguous()
+        inter_rnn = inter_rnn.permute(0, 3, 1, 2).contiguous()
+        inter_rnn = self.inter_norm(inter_rnn)
+        # [B, N, K, S]
         out = inter_rnn + intra_rnn
 
         return out
@@ -238,8 +251,8 @@ class Dual_Path_RNN(nn.Module):
         self.K = K
         self.num_spks = num_spks
         self.num_layers = num_layers
-        self.norm = select_norm(norm, in_channels)
-        self.conv1d = nn.Conv1d(in_channels, out_channels, 1)
+        self.norm = select_norm(norm, in_channels, 3)
+        self.conv1d = nn.Conv1d(in_channels, out_channels, 1, bias=False)
 
         self.dual_rnn = nn.ModuleList([])
         for i in range(num_layers):
@@ -249,9 +262,16 @@ class Dual_Path_RNN(nn.Module):
 
         self.conv2d = nn.Conv2d(
             out_channels, out_channels*num_spks, kernel_size=1)
-        self.end_conv1x1 = nn.Conv1d(out_channels, in_channels, 1)
+        self.end_conv1x1 = nn.Conv1d(out_channels, in_channels, 1, bias=False)
         self.prelu = nn.PReLU()
-        self.activation = nn.Sigmoid()
+        self.activation = nn.ReLU()
+         # gated output layer
+        self.output = nn.Sequential(nn.Conv1d(out_channels, out_channels, 1),
+                                    nn.Tanh()
+                                    )
+        self.output_gate = nn.Sequential(nn.Conv1d(out_channels, out_channels, 1),
+                                         nn.Sigmoid()
+                                         )
 
     def forward(self, x):
         '''
@@ -269,29 +289,22 @@ class Dual_Path_RNN(nn.Module):
             x = self.dual_rnn[i](x)
         x = self.prelu(x)
         x = self.conv2d(x)
-        # [B, N*spks, L]
+        # [B*spks, N, K, S]
+        B, _, K, S = x.shape
+        x = x.view(B*self.num_spks,-1, K, S)
+        # [B*spks, N, L]
         x = self._over_add(x, gap)
-        # [spks, B, N, L]
-        x = torch.chunk(x, self.num_spks, dim=1)
-        x = torch.stack(x, dim=0)
+        x = self.output(x)*self.output_gate(x)
         # [spks*B, N, L]
-        spks, B, N, L = x.shape
-        x = x.view(spks*B, N, L)
         x = self.end_conv1x1(x)
-        # [spks, B, N, L]
+        # [B*spks, N, L] -> [B, spks, N, L]
         _, N, L = x.shape
-        x = x.view(spks, B, N, L)
+        x = x.view(B, self.num_spks, N, L)
         x = self.activation(x)
+        # [spks, B, N, L]
+        x = x.transpose(0, 1)
 
         return x
-
-    def _Sequential(self, out_channels, hidden_channels,
-                    rnn_type='LSTM', norm='ln', dropout=0,
-                    bidirectional=False, num_layers=4):
-        block_list = [Dual_RNN_Block(out_channels, hidden_channels,
-                                     rnn_type='LSTM', norm='ln', dropout=0,
-                                     bidirectional=False) for i in range(num_layers)]
-        return nn.Sequential(*block_list)
 
     def _padding(self, input, K):
         '''
@@ -305,10 +318,10 @@ class Dual_Path_RNN(nn.Module):
         gap = K - (P + L % K) % K
         if gap > 0:
             pad = torch.Tensor(torch.zeros(B, N, gap)).type(input.type())
-            input = torch.cat((input, pad), dim=2)
+            input = torch.cat([input, pad], dim=2)
 
-        pad = torch.Tensor(torch.zeros(B, N, P)).type(input.type())
-        input = torch.cat((pad, input, pad), dim=2)
+        _pad = torch.Tensor(torch.zeros(B, N, P)).type(input.type())
+        input = torch.cat([_pad, input, _pad], dim=2)
 
         return input, gap
 
@@ -326,10 +339,10 @@ class Dual_Path_RNN(nn.Module):
         # [B, N, K, S]
         input1 = input[:, :, :-P].contiguous().view(B, N, -1, K)
         input2 = input[:, :, P:].contiguous().view(B, N, -1, K)
-        input = torch.cat((input1, input2), dim=3).view(
-            B, N, -1, K).permute(0, 1, 3, 2).contiguous()
+        input = torch.cat([input1, input2], dim=3).view(
+            B, N, -1, K).transpose(2, 3)
 
-        return input, gap
+        return input.contiguous(), gap
 
     def _over_add(self, input, gap):
         '''
@@ -343,7 +356,9 @@ class Dual_Path_RNN(nn.Module):
         # [B, N, S, K]
         input = input.transpose(2, 3).contiguous().view(B, N, -1, K * 2)
 
-        input = input[:, :, :, :K].contiguous().view(B, N, -1)[:, :, P:]*2
+        input1 = input[:, :, :, :K].contiguous().view(B, N, -1)[:, :, P:]
+        input2 = input[:, :, :, K:].contiguous().view(B, N, -1)[:, :, :-P]
+        input = input1 + input2
         # [B, N, L]
         if gap > 0:
             input = input[:, :, :-gap]
@@ -376,7 +391,7 @@ class Dual_RNN_model(nn.Module):
         self.separation = Dual_Path_RNN(in_channels, out_channels, hidden_channels,
                  rnn_type=rnn_type, norm=norm, dropout=dropout,
                  bidirectional=bidirectional, num_layers=num_layers, K=K, num_spks=num_spks)
-        self.decoder = Decoder(in_channels=in_channels, out_channels=1, kernel_size=kernel_size, stride=kernel_size//2)
+        self.decoder = Decoder(in_channels=in_channels, out_channels=1, kernel_size=kernel_size, stride=kernel_size//2, bias=False)
         self.num_spks = num_spks
     
     def forward(self, x):
@@ -393,10 +408,9 @@ class Dual_RNN_model(nn.Module):
         return audio
 
 if __name__ == "__main__":
-    rnn = Dual_RNN_model(256, 64, 128,bidirectional=True, norm='gln', num_layers=6).cuda()
+    rnn = Dual_RNN_model(256, 64, 128,bidirectional=True, norm='ln', num_layers=6)
     #encoder = Encoder(16, 512)
-    x = torch.randn(1, 100).cuda()
+    x = torch.ones(1, 100)
     out = rnn(x)
-    print("{:.3f}".format(check_parameters(rnn)))
-    print(out[0].shape)
+    print("{:.3f}".format(check_parameters(rnn)*1000000))
     print(rnn)
