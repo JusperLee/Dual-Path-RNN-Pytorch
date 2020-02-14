@@ -18,6 +18,14 @@ If you have any questions, you can ask them through the issue.
 
 - [ ] 2020-02-11: Complete Testing code.
 
+# Dataset
+We used the WSJ0 dataset as our training, test, and validation sets. Below is the data download link and mixed audio code for WSJ0.
+- [Audio mix Sample](https://www.merl.com/demos/deep-clustering/media/female-female-mixture.wav)
+
+- [WSJ0 Dataset](https://catalog.ldc.upenn.edu/LDC93S6A)
+
+- [Create Dataset](https://www.merl.com/demos/deep-clustering/create-speaker-mixtures.zip)
+
 # Training
 ## Training for Conv-TasNet model
 1. First, you need to generate the scp file using the following command. The content of the scp file is "filename && path".
