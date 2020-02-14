@@ -3,6 +3,7 @@ Dual-path RNN: efficient long sequence modeling for time-domain single-channel s
 
 If you have any questions, you can ask them through the issue.
 
+If you find this project helpful, you can give me a star generously.
 
 # Plan
 
