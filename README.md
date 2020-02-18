@@ -52,8 +52,16 @@ python train_rnn.py --opt config/Dual_RNN/train.yml
 
 # Inference
 
-**I have not written the code for inference at this time. But that code will be uploaded soon.**
-
+## Conv-TasNet
+You need to modify the default parameters in the test_tasnet.py file, including test files, test models, etc.
+### For multi-audio
+```shell
+python test_tasnet.py 
+```
+### For single-audio
+```shell
+python test_tasnet_wav.py 
+```
 # Result
 
 ## Conv-TasNet
