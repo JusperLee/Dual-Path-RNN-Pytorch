@@ -17,7 +17,7 @@ If you find this project helpful, you can give me a star generously.
 
 - [x] 2020-02-08: Fixed the code's bug.
 
-- [ ] 2020-02-11: Complete Testing code.
+- [x] 2020-02-11: Complete Testing code.
 
 # Dataset
 We used the WSJ0 dataset as our training, test, and validation sets. Below is the data download link and mixed audio code for WSJ0.
