@@ -3,6 +3,7 @@ Dual-path RNN: efficient long sequence modeling for time-domain single-channel s
 
 If you have any questions, you can ask them through the issue.
 
+If you find this project helpful, you can give me a star generously.
 
 # Plan
 
@@ -15,6 +16,16 @@ If you have any questions, you can ask them through the issue.
 - [x] 2020-02-07: Complete Training code. (Update **/model/model_rnn.py**) and Test parameters and some details are being adjusted.
 
 - [x] 2020-02-08: Fixed the code's bug.
+
+- [ ] 2020-02-11: Complete Testing code.
+
+# Dataset
+We used the WSJ0 dataset as our training, test, and validation sets. Below is the data download link and mixed audio code for WSJ0.
+- [Audio mix Sample](https://www.merl.com/demos/deep-clustering/media/female-female-mixture.wav)
+
+- [WSJ0 Dataset](https://catalog.ldc.upenn.edu/LDC93S6A)
+
+- [Create Dataset](https://www.merl.com/demos/deep-clustering/create-speaker-mixtures.zip)
 
 # Training
 ## Training for Conv-TasNet model
@@ -67,7 +78,7 @@ python test_tasnet_wav.py
 ## Conv-TasNet
 ![](https://github.com/JusperLee/Dual-Path-RNN-Pytorch/blob/master/log/Conv_Tasnet/loss.png)
 
-Final Results: **15.8690**
+Final Results: **15.8690** is 0.56 higher than **15.3** in the paper.
 
 ## Dual-Path-RNN
 The training has not been completed yet, and the results will be uploaded after the training is completed.
