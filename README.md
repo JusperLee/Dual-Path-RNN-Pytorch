@@ -73,6 +73,17 @@ python test_tasnet.py
 ```shell
 python test_tasnet_wav.py 
 ```
+## Dual-Path-RNN
+You need to modify the default parameters in the test_dualrnn.py file, including test files, test models, etc.
+### For multi-audio
+```shell
+python test_dualrnn.py 
+```
+### For single-audio
+```shell
+python test_dualrnn_wav.py 
+```
+
 # Result
 
 ## Conv-TasNet
@@ -81,7 +92,8 @@ python test_tasnet_wav.py
 Final Results: **15.8690** is 0.56 higher than **15.3** in the paper.
 
 ## Dual-Path-RNN
-The training has not been completed yet, and the results will be uploaded after the training is completed.
+
+Final Results: **18.98** is 0.1 higher than **18.8** in the paper.
 
 # Reference
 1. Luo Y, Chen Z, Yoshioka T. Dual-path RNN: efficient long sequence modeling for time-domain single-channel speech separation[J]. arXiv preprint arXiv:1910.06379, 2019.
