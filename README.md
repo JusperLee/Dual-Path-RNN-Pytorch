@@ -84,6 +84,15 @@ python test_dualrnn.py
 python test_dualrnn_wav.py 
 ```
 
+# Pretrain Model
+
+## Conv-TasNet
+
+[Conv-TasNet model](https://drive.google.com/open?id=1MRe4jiwgtAFZErjz-LWuuyEG8VGSU0YS "Google Driver")
+
+## Dual-Path-RNN
+[Dual-Path-RNN model](https://drive.google.com/open?id=1OR60ntyFGZmpMZTvAFXoKsckVV85bSY0 "Google Driver") 
+
 # Result
 
 ## Conv-TasNet
