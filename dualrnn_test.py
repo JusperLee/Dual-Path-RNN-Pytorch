@@ -15,7 +15,7 @@ class Separation():
         super(Separation, self).__init__()
         self.mix = AudioReader(mix_path, sample_rate=8000)
         opt = parse(yaml_path)
-        net = Dual_RNN_model(**opt['Conv_Tasnet'])
+        net = Dual_RNN_model(**opt['Dual_Path_RNN'])
         dicts = torch.load(model, map_location='cpu')
         net.load_state_dict(dicts["model_state_dict"])
         setup_logger(opt['logger']['name'], opt['logger']['path'],
@@ -64,7 +64,7 @@ def main():
     parser.add_argument(
         '-mix_scp', type=str, default='../create_scp/tt_mix.scp', help='Path to mix scp file.')
     parser.add_argument(
-        '-yaml', type=str, default='./config/train.yml', help='Path to yaml file.')
+        '-yaml', type=str, default='./config/train_rnn_opt.yml', help='Path to yaml file.')
     parser.add_argument(
         '-model', type=str, default='./checkpoint/Dual_Path_RNN_opt/best.pt', help="Path to model file.")
     parser.add_argument(

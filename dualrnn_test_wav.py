@@ -14,7 +14,7 @@ class Separation():
         super(Separation, self).__init__()
         self.mix = read_wav(mix_path)
         opt = parse(yaml_path)
-        net = Dual_RNN_model(**opt['Conv_Tasnet'])
+        net = Dual_RNN_model(**opt['Dual_Path_RNN'])
         dicts = torch.load(model, map_location='cpu')
         net.load_state_dict(dicts["model_state_dict"])
         setup_logger(opt['logger']['name'], opt['logger']['path'],
