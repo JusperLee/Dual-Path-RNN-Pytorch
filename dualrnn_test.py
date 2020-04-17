@@ -1,6 +1,6 @@
 import os
 import torch
-from data_loader.AudioData import AudioReader, write_wav
+from data_loader.AudioReader import AudioReader, write_wav
 import argparse
 from torch.nn.parallel import data_parallel
 from model.model_rnn import Dual_RNN_model

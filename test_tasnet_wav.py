@@ -1,6 +1,6 @@
 import os
 import torch
-from data_loader.AudioData import AudioReader, write_wav, read_wav
+from data_loader.AudioReader import AudioReader, write_wav, read_wav
 import argparse
 from torch.nn.parallel import data_parallel
 from model.model import Conv_TasNet
