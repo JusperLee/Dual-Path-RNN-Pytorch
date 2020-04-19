@@ -39,18 +39,18 @@ Dual_Path_RNN:
 
 #### training settings: learning rate scheme, loss
 train:
-  epoch: 1000
+  epoch: 100
   early_stop: 10
   path: /home/likai/data1/Dual-Path-RNN/checkpoint
-  gpuid: [5]
+  gpuid: [7]
 
 #### Optimizer settings
 optim:
   name: Adam   ### Adam, RMSprop, SGD
-  lr: !!float 1e-3
-  momentum: 0.9
-  weight_decay: !!float 1e-5
-  clip_norm: 200
+  lr: !!float 5e-4
+  momentum: 0
+  weight_decay: 0
+  clip_norm: 5
 
 #### scheduler settings
 scheduler:
