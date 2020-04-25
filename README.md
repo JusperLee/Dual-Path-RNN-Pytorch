@@ -92,7 +92,7 @@ python test_dualrnn_wav.py
 [Conv-TasNet model](https://drive.google.com/open?id=1MRe4jiwgtAFZErjz-LWuuyEG8VGSU0YS "Google Driver")
 
 ## Dual-Path-RNN
-[Dual-Path-RNN model](https://drive.google.com/open?id=1OR60ntyFGZmpMZTvAFXoKsckVV85bSY0 "Google Driver") 
+[Dual-Path-RNN model](https://drive.google.com/open?id=1TInJB-idggkKJ5YkNvnrTopum_HgX3_o "Google Driver") 
 
 # Result
 
