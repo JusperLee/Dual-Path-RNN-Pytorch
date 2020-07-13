@@ -47,13 +47,18 @@ class Trainer(object):
                 'Loading Dual-Path-RNN parameters: {:.3f} Mb'.format(check_parameters(self.dualrnn)))
 
         if opt['resume']['state']:
-            ckp = torch.load(opt['resume']['path'], map_location='cpu')
+            ckp = torch.load(os.path.join(
+                opt['resume']['path'], 'best.pt'), map_location='cpu')
             self.cur_epoch = ckp['epoch']
             self.logger.info("Resume from checkpoint {}: epoch {:.3f}".format(
                 opt['resume']['path'], self.cur_epoch))
-            self.dualrnn = Dual_RNN.load_state_dict(
-                ckp['model_state_dict']).to(self.device)
-            self.optimizer = optimizer.load_state_dict(ckp['optim_state_dict'])
+            Dual_RNN.load_state_dict(
+                ckp['model_state_dict'])
+            self.dualrnn = Dual_RNN.to(self.device)
+            optimizer.load_state_dict(ckp['optim_state_dict'])
+            self.optimizer = optimizer
+            lr = self.optimizer.param_groups[0]['lr']
+            self.adjust_learning_rate(self.optimizer, lr*0.5)
         else:
             self.dualrnn = Dual_RNN.to(self.device)
             self.optimizer = optimizer
